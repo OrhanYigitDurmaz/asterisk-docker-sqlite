@@ -1,0 +1,66 @@
+name: Build and Push Asterisk to GHCR
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # STEP 1: Build the image but don't push it yet.
+      # "load: true" keeps it in the local Docker daemon so we can test it.
+      - name: Build Docker image locally
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          tags: local-asterisk:latest
+
+      # STEP 2: Run the container, ask for the version, and save it.
+      # 'asterisk -V' outputs something like "Asterisk 20.4.0". We use awk to grab just the number.
+      - name: Extract Asterisk version
+        id: get_version
+        run: |
+          VERSION=$(docker run --rm local-asterisk:latest asterisk -V | awk '{print $2}')
+          echo "Found Asterisk version: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      # STEP 3: Generate the tags using the extracted version
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ steps.get_version.outputs.version }}
+            type=sha
+
+      # STEP 4: Push the image using the cached build layers and the new tags
+      - name: Push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
