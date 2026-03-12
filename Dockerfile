@@ -1,6 +1,6 @@
 FROM alpine:3.23
 
-RUN apk add --no-cache asterisk sqlite
+RUN apk add --no-cache asterisk sqlite asterisk-sample-config asterisk-sounds-en asterisk-sounds-moh
 
 RUN mkdir -p /etc/asterisk
 
